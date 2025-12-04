@@ -1,0 +1,5 @@
+{
+  "name": "Balthazar AI",
+  "description": "A RAG (Retrieval-Augmented Generation) interface for the Balthazar document analysis system using Llama 3 and Hybrid Search.",
+  "requestFramePermissions": []
+}
