@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import { createRoot } from "react-dom/client";
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import ReactMarkdown from "react-markdown";
 import { 
@@ -268,7 +267,7 @@ const App = () => {
   const [settings, setSettings] = useState<AppSettings>({
     mode: 'direct', 
     backendUrl: 'http://localhost:8000',
-    ragProvider: 'gemini' // Default to Gemini for RAG
+    ragProvider: 'gemini'
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -311,7 +310,11 @@ const App = () => {
     try {
       if (settings.mode === 'direct') {
         // --- DIRECT MODE (GEMINI API) ---
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        // VITE SPECIFIC: Utilisation de import.meta.env
+        const apiKey = import.meta.env.VITE_API_KEY;
+        if (!apiKey) throw new Error("Clé API manquante dans le fichier .env");
+
+        const ai = new GoogleGenAI({ apiKey });
         const chat = ai.chats.create({
           model: 'gemini-2.5-flash',
           config: {
@@ -333,24 +336,18 @@ const App = () => {
         }
       } else {
         // --- RAG MODE (BACKEND PYTHON) ---
-        // We pass the provider (gemini vs ollama) to the backend
-        
         const response = await fetch(`${settings.backendUrl.replace(/\/$/, '')}/qa`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             question: userText,
             top_k: 5,
             use_rerank: true,
-            provider: settings.ragProvider // Sending the choice
+            provider: settings.ragProvider
           }),
         });
 
-        if (!response.ok) {
-          throw new Error(`Backend Error: ${response.status} ${response.statusText}`);
-        }
+        if (!response.ok) throw new Error(`Backend Error: ${response.status}`);
 
         const data = await response.json();
         
@@ -369,11 +366,9 @@ const App = () => {
       if (settings.mode === 'rag' && (err.message.includes("Failed to fetch") || err.message.includes("NetworkError"))) {
         errorMsg = `Impossible de contacter le serveur Balthazar sur ${settings.backendUrl}. Vérifiez que le backend Python tourne.`;
       } else if (settings.mode === 'direct') {
-        errorMsg = "Erreur Gemini API. Vérifiez votre clé API.";
+        errorMsg = `Erreur Gemini API: ${err.message}`;
       }
-
       setError(errorMsg);
-      // Keep the placeholder but maybe mark it as error state or just leave the error banner
       setMessages(prev => prev.filter(msg => msg.id !== tempModelId));
     } finally {
       setIsLoading(false);
@@ -390,142 +385,52 @@ const App = () => {
   return (
     <div className="flex flex-col h-screen bg-slate-900 text-slate-100 font-sans">
       <Header onOpenSettings={() => setIsSettingsOpen(true)} currentMode={settings.mode} />
-
       <SettingsModal 
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onSave={setSettings}
       />
-
-      {/* Main Chat Area */}
       <main className="flex-1 overflow-y-auto p-4 md:p-6 scroll-smooth">
         <div className="max-w-4xl mx-auto">
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 opacity-0 animate-[fadeIn_0.5s_ease-out_forwards]">
+            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6">
               <div className="bg-slate-800 p-8 rounded-3xl shadow-2xl border border-slate-700 max-w-lg">
-                <div className="flex justify-center mb-6">
-                  {settings.mode === 'rag' ? (
-                     <div className="p-4 bg-amber-500/10 rounded-2xl relative">
-                       <Database className="w-16 h-16 text-amber-500" />
-                       <div className="absolute -bottom-2 -right-2 bg-slate-900 rounded-full p-1 border border-slate-700">
-                         {settings.ragProvider === 'gemini' 
-                           ? <CloudLightning className="w-5 h-5 text-amber-400" /> 
-                           : <Server className="w-5 h-5 text-green-500" />}
-                       </div>
-                     </div>
-                  ) : (
-                     <div className="p-4 bg-blue-500/10 rounded-2xl">
-                       <Sparkles className="w-16 h-16 text-blue-500" />
-                     </div>
-                  )}
-                </div>
-                
-                <h2 className="text-3xl font-bold mb-3 text-white">
-                  {settings.mode === 'rag' ? 'Balthazar RAG' : 'Gemini Assistant'}
-                </h2>
-                <div className="text-slate-400 text-lg leading-relaxed mb-2">
-                  {settings.mode === 'rag' ? (
-                     <span>Mode Documents <span className="text-sm bg-slate-700 px-2 py-0.5 rounded text-slate-200">
-                       via {settings.ragProvider === 'gemini' ? 'Gemini 2.5' : 'Ollama Local'}
-                     </span></span>
-                  ) : (
-                    "Mode Direct Gemini"
-                  )}
-                </div>
-                <p className="text-slate-500 text-sm">
-                  {settings.mode === 'rag' 
-                    ? "Recherche dans vos fichiers locaux, puis génère une réponse basée sur le contexte trouvé." 
-                    : "Idéal pour l'aide au code, la rédaction et l'analyse générale sans contexte spécifique."}
-                </p>
-                
-                <button 
-                  onClick={() => setIsSettingsOpen(true)}
-                  className="mt-6 text-sm text-slate-500 hover:text-slate-300 underline underline-offset-4"
-                >
-                  Configurer
-                </button>
+                <h2 className="text-3xl font-bold mb-3 text-white">Gemini Dashboard</h2>
+                <p className="text-slate-500 text-sm">Prêt à discuter ou à chercher dans vos documents.</p>
               </div>
             </div>
           ) : (
             <div className="space-y-6 pb-4">
-              {messages.map((msg) => (
-                <ChatMessage key={msg.id} message={msg} />
-              ))}
+              {messages.map((msg) => <ChatMessage key={msg.id} message={msg} />)}
               {isLoading && messages[messages.length - 1].text.length === 0 && (
-                <div className="flex gap-4">
-                   <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 animate-pulse ${
-                     settings.mode === 'rag' ? 'bg-amber-600' : 'bg-purple-600'
-                   }`}>
-                      {settings.mode === 'rag' ? <Database className="w-5 h-5 text-white" /> : <Bot className="w-6 h-6 text-white" />}
-                   </div>
-                   <div className="flex items-center">
-                      <span className="text-slate-400 text-sm animate-pulse">
-                        {settings.mode === 'rag' 
-                          ? `Recherche (Balthazar) + Génération (${settings.ragProvider})...` 
-                          : 'Génération de la réponse...'}
-                      </span>
-                   </div>
+                <div className="flex gap-4 items-center text-slate-400">
+                   <Loader2 className="w-5 h-5 animate-spin" /> Génération...
                 </div>
               )}
               <div ref={messagesEndRef} />
             </div>
           )}
-          
-          {error && (
-            <div className="flex items-center gap-2 p-4 mb-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 mx-auto max-w-lg shadow-lg">
-              <AlertCircle className="w-5 h-5 shrink-0" />
-              <p className="text-sm font-medium">{error}</p>
-            </div>
-          )}
+          {error && <div className="p-4 text-red-400 bg-red-900/20 rounded-lg">{error}</div>}
         </div>
       </main>
-
-      {/* Input Area */}
-      <footer className="p-4 bg-slate-900/90 backdrop-blur-lg border-t border-slate-800">
+      <footer className="p-4 bg-slate-900/90 border-t border-slate-800">
         <div className="max-w-4xl mx-auto relative">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={settings.mode === 'rag' ? "Interroger vos documents..." : "Envoyer un message à Gemini..."}
+            placeholder="Message..."
+            className="w-full bg-slate-800 text-slate-100 rounded-2xl p-4 pr-12 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
             rows={1}
-            className={`w-full bg-slate-800 text-slate-100 placeholder-slate-500 rounded-2xl pl-5 pr-14 py-4 focus:outline-none focus:ring-2 resize-none shadow-xl border border-slate-700 transition-all focus:bg-slate-750 ${
-              settings.mode === 'rag' ? 'focus:ring-amber-500/50' : 'focus:ring-blue-500/50'
-            }`}
-            style={{ minHeight: '60px', maxHeight: '200px' }}
           />
-          
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isLoading}
-            className={`absolute right-3 bottom-3 p-2.5 text-white rounded-xl transition-all duration-200 shadow-md flex items-center justify-center group disabled:opacity-50 ${
-              settings.mode === 'rag' 
-                ? 'bg-amber-600 hover:bg-amber-500 disabled:hover:bg-amber-600' 
-                : 'bg-blue-600 hover:bg-blue-500 disabled:hover:bg-blue-600'
-            }`}
-          >
-            {isLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <Send className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
-            )}
+          <button onClick={handleSend} className="absolute right-3 bottom-3 p-2 text-blue-400 hover:text-white">
+            <Send className="w-5 h-5" />
           </button>
-        </div>
-        <div className="text-center mt-3 text-xs text-slate-600 flex justify-center gap-4">
-          <span>Mode: <strong className={settings.mode === 'rag' ? 'text-amber-500' : 'text-blue-500'}>
-            {settings.mode === 'rag' ? 'Balthazar RAG' : 'Direct Gemini'}
-          </strong></span>
-          {settings.mode === 'rag' && (
-             <span>Moteur: <strong className="text-slate-400">{settings.ragProvider}</strong></span>
-          )}
-          <span>•</span>
-          <span>Powered by Google Gemini</span>
         </div>
       </footer>
     </div>
   );
 };
 
-const root = createRoot(document.getElementById("root")!);
-root.render(<App />);
+export default App;
